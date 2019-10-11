@@ -1,12 +1,109 @@
-import React from 'react';
-import ReactDOM from 'react-dom';
-import './index.css';
-import App from './App';
-import * as serviceWorker from './serviceWorker';
+import React, { useState, useReducer, useEffect } from "react";
+import ReactDOM from "react-dom";
+import axios from "axios";
+import { identifier } from "@babel/types";
 
-ReactDOM.render(<App />, document.getElementById('root'));
+const dataFetchReducer = (state, action) => {
+    switch (action.type) {
+        case 'FETCH_INIT':
+            return {
+                ...state,
+                isLoading: true,
+                isError: false,
+            };
+        case 'FETCH_SUCCESS':
+                return {
+                    ...state,
+                    isLoading: false,
+                    isError: false,
+                    data: action.payload,
+                };
+        case 'FETCH_FAILURE':
+                return {
+                    ...state,
+                    isLoading: false,
+                    isError: true,
+                };
+        default:
+            throw new Error();
+    }
+}
+const useDataApi = (initialUrl, initialData) => {
+    const [url, setUrl] = useState(initialUrl);
+    const [state, dispatch] = useReducer(dataFetchReducer, {
+        isLoading: false,
+        isError: false,
+        data: initialData,
+    })
 
-// If you want your app to work offline and load faster, you can change
-// unregister() to register() below. Note this comes with some pitfalls.
-// Learn more about service workers: https://bit.ly/CRA-PWA
-serviceWorker.unregister();
+    useEffect(() => {
+
+        let didCancel = false;
+
+        const fetchData = async () => {
+            dispatch({type: 'FETCH_INIT'});
+            try {
+                const result = await axios(url);
+
+                if(!didCancel) {
+                    dispatch({type: 'FETCH_SUCCESS', payload: result.data });
+                }
+            } catch (error) {
+                if(!didCancel) {
+                    dispatch({type: 'FETCH_FAILURE'});
+                }
+            }
+        };
+
+        fetchData();
+
+        return () => {
+            didCancel = true;
+        }
+
+    }, [url]);
+
+    return [state, setUrl];
+}
+
+ 
+function App() {
+    const [query, setQuery] = useState('redux');
+    const [{data, isLoading, isError}, doFetch] = useDataApi(
+        'https://hn.algolia.com/api/v1/search?query=redux',
+        { hits: [] },
+    );
+
+    return (
+        <React.Fragment>
+          <form
+            onSubmit={event =>
+              {
+                doFetch(`http://hn.algolia.com/api/v1/search?query=${query}`);
+                event.preventDefault();
+              }}>
+            <input
+              type="text"
+              value={query}
+              onChange={event => setQuery(event.target.value)}
+            />
+            <button type="submit">Search</button>
+          </form>
+          {isError && <div>Something went wrong ...</div>}
+    
+          {isLoading ? (
+            <div>Loading...</div>
+          ) : (
+            <ul>
+              {data.hits.map(item => (
+                <li key={item.objectID}>
+                  <a href={item.url}>{item.title}</a>
+                </li>
+              ))}
+            </ul>
+          )}
+        </React.Fragment>
+      );
+}
+
+ReactDOM.render(<App />, document.getElementById("root"));
